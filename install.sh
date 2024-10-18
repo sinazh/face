@@ -1,76 +1,87 @@
 #!/bin/bash
 
-# به‌روزرسانی بسته‌ها
-echo "Updating packages..."
-sudo apt update -y
+# به روزرسانی و نصب ابزارهای ضروری
+echo "Updating package lists..."
+sudo apt update
 
-# نصب pip و کتابخانه‌های مورد نیاز
-echo "Installing Python and required libraries..."
-sudo apt install -y python3-pip python3-opencv build-essential
-pip3 install face_recognition mysql-connector-python
+echo "Installing essential build tools..."
+sudo apt install -y build-essential cmake python3-dev python3-pip python3-venv git mysql-server
 
-# نصب CMake
-echo "Installing CMake..."
-sudo apt install -y cmake
+# بررسی نصب CMake
+echo "Checking if CMake is installed..."
+if ! command -v cmake &> /dev/null; then
+    echo "CMake not found, installing..."
+    sudo apt install -y cmake
+else
+    echo "CMake is already installed."
+fi
 
-# نصب dlib
-echo "Installing dlib..."
-pip3 install dlib
+# کلون کردن پروژه از گیت‌هاب
+echo "Cloning project from GitHub..."
+if [ -d "face" ]; then
+    echo "Project already exists, pulling latest changes..."
+    cd face && git pull
+else
+    git clone https://github.com/sinazh/face.git
+    cd face
+fi
 
-# نصب MySQL
-echo "Installing MySQL Server..."
-sudo apt install -y mysql-server
+# نصب pipx در صورت نیاز
+echo "Installing pipx..."
+sudo apt install -y pipx
 
-# راه‌اندازی MySQL و ساخت دیتابیس و کاربر
-echo "Setting up MySQL database..."
+# تلاش برای نصب dlib از مخازن apt
+echo "Attempting to install dlib via apt..."
+sudo apt install -y python3-dlib
+
+# بررسی موفقیت نصب dlib از apt
+if ! python3 -c "import dlib" &> /dev/null; then
+    echo "dlib not available via apt. Creating virtual environment..."
+    
+    # ایجاد محیط مجازی
+    python3 -m venv myenv
+    source myenv/bin/activate
+
+    # ارتقاء pip و نصب dlib در محیط مجازی
+    echo "Upgrading pip and installing dlib in virtual environment..."
+    pip install --upgrade pip
+    pip install dlib
+
+    # بررسی نصب dlib در محیط مجازی
+    if ! python -c "import dlib" &> /dev/null; then
+        echo "Failed to install dlib in virtual environment."
+        deactivate
+        exit 1
+    else
+        echo "dlib successfully installed in virtual environment."
+    fi
+    
+    deactivate
+else
+    echo "dlib successfully installed via apt."
+fi
+
+# نصب سایر کتابخانه‌های مورد نیاز Python
+echo "Installing other Python dependencies..."
+pip install -r requirements.txt
+
+# راه‌اندازی و پیکربندی MySQL
+echo "Setting up MySQL..."
 sudo systemctl start mysql
-sudo mysql -u root -e "CREATE DATABASE attendance_db;"
-sudo mysql -u root -e "CREATE USER 'attendance_user'@'localhost' IDENTIFIED BY 'StrongPassword123';"
-sudo mysql -u root -e "GRANT ALL PRIVILEGES ON attendance_db.* TO 'attendance_user'@'localhost';"
-sudo mysql -u root -e "FLUSH PRIVILEGES;"
+sudo systemctl enable mysql
 
-# ساخت فایل تنظیمات اتصال به دیتابیس
-echo "Creating database configuration file..."
-cat << EOF > /opt/attendance_system/db_config.py
-db_config = {
-    'host': 'localhost',
-    'user': 'attendance_user',
-    'password': 'StrongPassword123',
-    'database': 'attendance_db'
-}
+# ایجاد دیتابیس و کاربر MySQL
+echo "Creating MySQL database and user..."
+mysql -u root -p <<EOF
+CREATE DATABASE attendance_system;
+CREATE USER 'attendance_user'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON attendance_system.* TO 'attendance_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
 EOF
 
-# تنظیم پوشه پروژه و کلون کردن از گیت‌هاب
-echo "Cloning project from GitHub..."
-if [ -d "/opt/attendance_system" ]; then
-    sudo rm -rf /opt/attendance_system
-fi
-sudo git clone https://github.com/sinazh/face.git /opt/attendance_system
+# اجرای برنامه
+echo "Running the application..."
+python3 app.py
 
-# تنظیم فایل سرویس systemd
-echo "Setting up systemd service..."
-sudo bash -c 'cat << EOF > /etc/systemd/system/attendance_service.service
-[Unit]
-Description=Face Recognition Attendance System
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /opt/attendance_system/main.py
-Restart=always
-User=root
-WorkingDirectory=/opt/attendance_system
-StandardOutput=inherit
-StandardError=inherit
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF'
-
-# فعال‌سازی سرویس
-sudo systemctl daemon-reload
-sudo systemctl enable attendance_service
-sudo systemctl start attendance_service
-
-echo "Installation complete!"
-echo "The attendance system is now running as a service."
+echo "Installation and setup complete!"

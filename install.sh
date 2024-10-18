@@ -45,7 +45,7 @@ echo "Cloning project from GitHub..."
 if [ -d "/opt/attendance_system" ]; then
     sudo rm -rf /opt/attendance_system
 fi
-sudo git clone https://github.com/yourusername/attendance_system.git /opt/attendance_system
+sudo git clone https://github.com/sinazh/face.git /opt/attendance_system
 
 # تنظیم فایل سرویس systemd
 echo "Setting up systemd service..."
